@@ -24,7 +24,7 @@ p_load(tidyverse,dplyr,here, rvest, tibble,rio,skimr,caret,stargazer)
 #saveRDS(object = df, file = "Data/submission_template.rds")
 #saveRDS(object = df_test_hog, file = "Data/test_hogares.rds")
 #saveRDS(object = df_test_per, file = "Data/test_personas.rds")
-#saveRDS(object = df_train_hog, file = "Datatrain_hogare.rds")
+#saveRDS(object = df_train_hog, file = "Data/train_hogares.rds")
 #saveRDS(object = df_train_per, file = "Data/train_personas.rds")
 
 # Cargar datos -----------------------------------------------------------
