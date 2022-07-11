@@ -237,5 +237,157 @@ df_test_hog_final <- df_test_hog %>%
 prop.table(table(df_train_hog_final$Pobre))
 
 
+#######Creación variables modelo de ingresos#########
+
+##Asignación de variables de ingreso a las bases de personas final
+var_model_ing <- c("id","Ingtot","Ingtot_fin")
+df_pers_ing <- df_train_per %>% left_join(df_train_hog,by="id") %>% left_join(df_train_per_1[,var_model_ing], by="id")
+skim(df_pers_ing)
+
+##Filtro de base para personas menores de 15 años y con ingresos iguales a 0
+df_pers_ing_1 <- df_pers_ing[(df_pers_ing$edad >= 15) & (df_pers_ing$Ingtot_fin>0), ]
+skim(df_pers_ing_1)
+
+## Variables del modelo de ingresos base training personas ##
+##edad,edad^2,sexo,nivel_educativo,actividad,tiempo_empresa, tiempo_empresa^2,ocupacion_empleo, ReciAyudaInst, Ocupacion_vivienda, cotiza_pension, HorasTrabSemana
+
+## Imputación: tiempo_empresa, recibe_ayudas,ocupación_empleo, cotiza_pensión, horas_de_trabjo_a_la_semana ##
+
+## Se imputan los valores N.A. como 0 en la variable de tiempo_empresa, ya que en la actividad reportada manifiestan no estar trabajando
+table(df_pers_ing_1[is.na(df_pers_ing_1$tiempo_empresa),]$edad)
+table(df_pers_ing_1[is.na(df_pers_ing_1$tiempo_empresa),]$Desocupado)
+table(df_pers_ing_1[is.na(df_pers_ing_1$tiempo_empresa),]$actividad)
+
+df_pers_ing_1 <- df_pers_ing_1 %>% mutate(tiempo_empresa=ifelse(is.na(tiempo_empresa),
+                                                                0,
+                                                                tiempo_empresa),
+                                          tiempo_empresa_sqr=tiempo_empresa^2)
+skim(df_pers_ing_1$tiempo_empresa)
+skim(df_pers_ing_1$tiempo_empresa_sqr)
+
+
+## imputación de recibe ayudas, 1=sí 0=no
+table(df_pers_ing_1$ReciAyudaInst)
+df_pers_ing_1 <- df_pers_ing_1 %>% mutate(ReciAyudaInst=ifelse(is.na(ReciAyudaInst)==T | ReciAyudaInst==2
+                                                               | ReciAyudaInst==9,
+                                                               0,
+                                                               1))
+skim(df_pers_ing_1$ReciAyudaInst)
+
+## imputación ocupación empleo, se imputan como 0 los N.A. ya que en la actividad reportada manifiestan no estar trabajando
+table(df_pers_ing_1[is.na(df_pers_ing_1$ocupacion_empleo),]$actividad)
+df_pers_ing_1 <- df_pers_ing_1 %>% mutate(ocupacion_empleo=ifelse(is.na(ocupacion_empleo)==T,
+                                                                  0,
+                                                                  ocupacion_empleo))
+skim(df_pers_ing_1$ocupacion_empleo)
+
+
+## imputacón cotiza_pension , se imputan como 0 los N.A. ya que en la actividad reportada manifiestan no estar trabajando
+table(df_pers_ing_1$cotiza_pension)
+table(df_pers_ing_1[is.na(df_pers_ing_1$cotiza_pension),]$actividad)
+df_pers_ing_1 <- df_pers_ing_1 %>% mutate(cotiza_pension=ifelse(is.na(cotiza_pension)==T,
+                                                                2,
+                                                                cotiza_pension))
+skim(df_pers_ing_1$cotiza_pension)
+
+## imputación horas de trabajo a la semana, se imputan como 0 los N.A. ya que en la actividad reportada manifiestan no estar trabajando
+table(df_pers_ing_1[is.na(df_pers_ing_1$HorasTrabSemana),]$actividad)
+df_pers_ing_1 <- df_pers_ing_1 %>% mutate(HorasTrabSemana=ifelse(is.na(HorasTrabSemana)==T,
+                                                                 0,
+                                                                 HorasTrabSemana))
+
+skim(df_pers_ing_1$HorasTrabSemana)
+
+## Creación de edad^2 y recodificación de sexo
+
+df_pers_ing_1 <- df_pers_ing_1 %>% mutate(edad_sqr=edad^2,
+                                          mujer=ifelse(sexo==1,
+                                                       0,
+                                                       1))
+
+df_pers_ing_1 <- df_pers_ing_1 %>% mutate(Ingtot_log=log(Ingtot_fin))
+
+
+## Variables del modelo de ingresos base test personas ##
+
+var_model_ing <- c("id")
+df_pers_ing_test <- df_test_per %>% left_join(df_test_hog,by="id")
+skim(df_pers_ing)
+
+## Imputación de las siguientes varibales: niv_educativo,actividad,tiempo_empresa, ocupacion_empleo,ReciAyudaInst,cotiza_pension,HorasTrabSemana
+
+## imputación actividad. Los N.A de actividad están en un rango de edad de 0 a 11 años, como la mayoria de los niños están estudiando los imputamos como estudiantes y a los  niños de 0 a 2 años los imputamos como otra actividad
+table(df_pers_ing_test[(df_pers_ing_test$edad<=11),]$actividad,df_pers_ing_test[(df_pers_ing_test$edad<=11),]$edad)
+table(df_pers_ing_test[is.na(df_pers_ing_test$actividad),]$edad)
+table(df_test_per[(df_test_per$parentesco==1),]$edad)
+
+df_pers_ing_test <- df_pers_ing_test %>% mutate(actividad=ifelse((is.na(actividad)==T) & (edad>2),
+                                                                 3,
+                                                                 6))
+
+skim(df_pers_ing_test$actividad)
+
+## Se imputan los valores N.A. como 0 en la variable de tiempo_empresa, ya que en la actividad reportada manifiestan no estar trabajando.
+table(df_pers_ing_test[is.na(df_pers_ing_test$tiempo_empresa),]$edad)
+table(df_pers_ing_test[is.na(df_pers_ing_test$tiempo_empresa),]$Desocupado)
+table(df_pers_ing_test[is.na(df_pers_ing_test$tiempo_empresa),]$actividad)
+
+df_pers_ing_test <- df_pers_ing_test %>% mutate(tiempo_empresa=ifelse(is.na(tiempo_empresa),
+                                                                      0,
+                                                                      tiempo_empresa),
+                                                tiempo_empresa_sqr=tiempo_empresa^2)
+skim(df_pers_ing_test$tiempo_empresa)
+skim(df_pers_ing_test$tiempo_empresa_sqr)
+
+## imputacion nivel educativo, se imputan en 0 ya que las edades de los individuos son de 0 a 2 años
+table(df_pers_ing_test[is.na(df_pers_ing_test$niv_educativo),]$edad)
+
+df_pers_ing_test <- df_pers_ing_test %>% mutate(niv_educativo=ifelse(is.na(niv_educativo),
+                                                                     0,
+                                                                     niv_educativo))
+
+skim(df_pers_ing_test$niv_educativo)
+
+
+## imputación de recibe ayudas, 1=sí 0=no
+table(df_pers_ing_test$ReciAyudaInst)
+df_pers_ing_test <- df_pers_ing_test %>% mutate(ReciAyudaInst=ifelse(is.na(ReciAyudaInst)==T | ReciAyudaInst==2
+                                                                     | ReciAyudaInst==9,
+                                                                     0,
+                                                                     1))
+skim(df_pers_ing_test$ReciAyudaInst)
+
+## imputación ocupación empleo, se imputan como 0 ya que dentro de las actividades reportadas manifiestan no estar trabajando
+table(df_pers_ing_test[is.na(df_pers_ing_test$ocupacion_empleo),]$actividad)
+df_pers_ing_test <- df_pers_ing_test %>% mutate(ocupacion_empleo=ifelse(is.na(ocupacion_empleo)==T,
+                                                                        0,
+                                                                        ocupacion_empleo))
+skim(df_pers_ing_test$ocupacion_empleo)
+
+## imputacón cotiza_pension 
+table(df_pers_ing_test$cotiza_pension)
+table(df_pers_ing_test[is.na(df_pers_ing_test$cotiza_pension),]$actividad)
+table(df_pers_ing_test[(is.na(df_pers_ing_test$cotiza_pension) ) & (df_pers_ing_test$actividad==1),]$ocupacion_empleo)
+
+df_pers_ing_test <- df_pers_ing_test %>% mutate(cotiza_pension=ifelse(is.na(cotiza_pension)==T & actividad!=1,
+                                                                      2,
+                                                                      ifelse(is.na(cotiza_pension)==T & actividad==1 & (ocupacion_empleo==1|ocupacion_empleo==5),
+                                                                             1,
+                                                                             ifelse(is.na(cotiza_pension)==T & actividad==1 & (ocupacion_empleo!=1 & ocupacion_empleo!=5),
+                                                                                    2,
+                                                                                    ifelse(is.na(cotiza_pension)==T,
+                                                                                           2,
+                                                                                           cotiza_pension)))))
+skim(df_pers_ing_test$cotiza_pension)
+
+## Creación de edad^2 y recodificación de sexo
+
+df_pers_ing_test <- df_pers_ing_test %>% mutate(edad_sqr=edad^2,
+                                                mujer=ifelse(sexo==1,
+                                                             0,
+                                                             1))
+
+
+
 
 
