@@ -388,6 +388,62 @@ df_pers_ing_test <- df_pers_ing_test %>% mutate(edad_sqr=edad^2,
                                                              1))
 
 
+#### 1) Problema de clasificación:  POBREZA -----------------------------------------------------
 
+set.seed(202207) ## fijo la semilla
+
+## particiones de la muestra
+
+split1 <- createDataPartition(df_train_hog_final$Pobre, p = .7)[[1]]
+length(split1)
+
+other <- df_train_hog_final[-split1,]
+nrow(other)
+training <- df_train_hog_final[split1,] ## La muestra de entrenamiento "1"
+
+##para usar la evaluación y testeo
+
+#set.seed(202208)
+split2 <- createDataPartition(other$Pobre, p = 1/3)[[1]]
+evaluation <- other[split2,] ## La muestra de evaluación "2"
+testing <- other[-split2,]   ## La muestra de testeo "3"
+
+
+prop.table(table(training$Pobre))
+
+prop.table(table(testing$Pobre))
+
+prop.table(table(evaluation$Pobre))
+
+
+### Crear modelo K-vecinos cercanos k=1 hasta k=13--------------------------------
+
+# Re escalar variables
+var_knn <- c("num_cuartos_exclus_hog", "Ocupacion_vivienda","personas_x_Ug","edad_media","niv_educ_jef","prop_hombre","prop_mujer","ContEspec","Subsidiado","prop_si_cotiza","prop_no_cotiza","Pensionado")
+
+x <- scale(df_train_hog_final[,var_knn]) ## re escalar media 0 sd 1 
+apply(x,2,sd) ## comprobamos que sd=1
+
+model_knn <- c(1,5) #,7,10,13)
+KNN <- data.frame()
+for (i in model_knn){
+  k <- knn(train=x[split1,], ## base de entrenamiento estan todas menos las de testeo
+           test=x[-split1,],   ## base de testeo
+           cl=df_train_hog_final$Pobre[split1], ## outcome
+           k=i)        ## vecinos 
+  
+  
+  #data.frame(df_test_hog_final$Pobre[-training],k1)
+  
+  ## matriz de confusión esta me permite hacer la matriz
+  cm_k <- confusionMatrix(data=k , 
+                          reference=df_train_hog_final$Pobre[-split1] , 
+                          mode="sens_spec" , 
+                          positive="Pobre")$table
+  cm <- data.frame(cbind(modelo = paste0("Knn_", i),cm_k))
+  KNN<-rbind(KNN, cm)
+}
+### Todas las matices de confusión de kNN
+KNN
 
 
