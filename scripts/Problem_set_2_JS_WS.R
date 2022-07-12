@@ -10,6 +10,10 @@ cat("\014")   ## limpiar consola
 #directorio Walter
 setwd("C:/Users/walte/OneDrive/Documentos/Maestría en Economía Aplicada/Big Data/GitHub/Talleres/Problem_set_2_WS_JSV")
 
+##directorio Juan
+setwd("/Users/usuario/Desktop/Problem_set_2_WS_JSV")
+dir()
+
 # Cargar librerías -----------------------------------------------------------
 require(pacman)
 p_load(tidyverse,dplyr,here, rvest, tibble,rio,skimr,stargazer,reshape2, class, caret, ROCR, pROC,randomForest,fastAdaboost) ## caret
@@ -424,24 +428,20 @@ var_knn <- c("num_cuartos_exclus_hog", "Ocupacion_vivienda","personas_x_Ug","eda
 x <- scale(df_train_hog_final[,var_knn]) ## re escalar media 0 sd 1 
 apply(x,2,sd) ## comprobamos que sd=1
 
-model_knn <- c(1) #,5,7,10,13)
+model_knn <- c(1,5,7,10,13)
 
 KNN <- data.frame()
 #ejecutar loop para k vecinos
 for (i in model_knn){
   k <- knn(train=x[split1,], ## base de entrenamiento estan todas menos las de testeo
-           test=testing,   ## base de testeo
+           test=x[-split1,],   ## base de testeo
            cl=df_train_hog_final$Pobre[split1], ## outcome
            k=i)        ## vecinos 
   
   
-  #data.frame(trainig$Pobre,k1)
-  nombre = paste0("p_k",i)
-  pobre_k <- data.frame(nombre = k)
-  training <- cbind(training,pobre_k)
   ## matriz de confusión esta me permite hacer la matriz
   cm_k <- confusionMatrix(data=k , 
-                          reference=testing , 
+                          reference=df_train_hog_final$Pobre[-split1] , 
                           mode="sens_spec" , 
                           positive="Pobre")$table
   cm <- data.frame(cbind(modelo = paste0("Knn_", i),cm_k))
@@ -467,8 +467,12 @@ glm_logit <- glm(model , family=binomial(link="logit") , data=training)
 ## Predicción
 testing$predict_logit <- predict(glm_logit , testing , type="response")
 
+testing <- testing %>%
+  mutate(predict_logit=ifelse(predict_logit>0.5,1,0) %>%
+           factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
 ## Matriz de confusion de logit normal
-confusionMatrix(data=testing$p_logit, 
+confusionMatrix(data=testing$predict_logit, 
                 reference=testing$Pobre , 
                 mode="sens_spec" , positive="Pobre")
 
@@ -484,7 +488,6 @@ control <- trainControl(method = "cv", number = 5,
                         savePredictions = T)
 ## Entrenamiento
 
-nrow(logit_cv)
 logit_cv = train(model,
                  data=training,
                  method="glm",
@@ -500,9 +503,6 @@ testing$p_logit_cv <- predict(logit_cv , testing , type="prob")[1]
 pred <- prediction(testing$p_logit_cv , testing$Pobre)
 
 roc_ROCR <- performance(pred,"tpr","fpr")
-
-plot(roc_ROCR, main = "ROC curve", colorize = T)
-abline(a = 0, b = 1)
 
 auc_roc = performance(pred, measure = "auc")
 auc_roc@y.values[[1]]
@@ -638,13 +638,15 @@ forest <- train(
   #preProcess = c("center", "scale")
 )
 
+## Guardamos el modelo para uso posterior 
 saveRDS(forest, "Data/modelo_forest.rds")
 
 
 ## uso del modelo Random Forest
 
-myforest <- readRDS("Data/modelo_forest.rds")
+myforest <- readRDS("Data/modelo_forest.rds") ## se trae el modelo RF para predecir 
 
+## Predicciones
 pred <- predict(myforest, testing, type="prob")[1]
 testing <- cbind(testing, pred$Pobre)
 colnames(testing)[ncol(testing)] <- c("pr_forest")
@@ -747,6 +749,79 @@ testing <- testing %>%
 testing <- testing %>% 
   mutate(pr_forest_th=ifelse(pr_forest>rfThresh_fin[4,1],1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+## Modelo predicción de ingresos 
+## Estrutura del modelo de ingreso 
+var_mod_ingr <- c("id","edad","edad_sqr","sexo","niv_educativo","actividad","tiempo_empresa", "tiempo_empresa_sqr","ocupacion_empleo", "ReciAyudaInst", "Ocupacion_vivienda", "cotiza_pension", "HorasTrabSemana","mujer")
+
+## definición de semilla 
+set.seed(777)
+
+### Se corren 11 modelos para así encontrar el que mejor se ajuste por MSE meidante CV K-FOLD
+
+modelos <- list(Ingtot_log~edad+edad_sqr,
+                Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr,
+                Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer,
+                Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+mujer:niv_educativo,
+                Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo,
+                Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo+factor(actividad),
+                Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo+factor(actividad)+factor(ocupacion_empleo),
+                Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo+factor(actividad)+factor(ocupacion_empleo)+ReciAyudaInst,
+                Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo+factor(actividad)+factor(ocupacion_empleo)+ReciAyudaInst+factor(Ocupacion_vivienda),
+                Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo+factor(actividad)+factor(ocupacion_empleo)+ReciAyudaInst+factor(Ocupacion_vivienda)+factor(cotiza_pension),
+                Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo+factor(actividad)+factor(ocupacion_empleo)+ReciAyudaInst+factor(Ocupacion_vivienda)+factor(cotiza_pension)+HorasTrabSemana)
+
+## Cálculo de MSE por CV
+
+MSE_CV <- c()
+for (i in modelos){
+  model<-train(i,
+               data = df_pers_ing_test[,var_mod_ingre],
+               trControl = trainControl(method = "cv", number = 5),
+               method = "null") # specifying regression model
+  
+  mse_cv <- model[["results"]][["RMSE"]]
+  MSE_CV<-c(MSE_CV,mse_cv)
+}
+
+MSE_CV
+
+ScaleXmod<-c('m1', 'm2', 'm3' ,'m4', 'm5','m6','m7','m8','m9','m10','m11')
+grafica_mse <- data.frame(modelos=c(1,2,3,4,5,6,7,8,9,10,11),
+                          MSE=MSE_CV)
+rownames(grafica_mse)<-c(1,2,3,4,5,6,7,8,9,10,11)
+
+## gráfica de los MSE de los modelos entrenados
+ggplot(grafica_mse, aes(x=modelos,y=MSE, group = 1)) + 
+  geom_line() +
+  theme_classic() + 
+  scale_x_continuous(breaks = c(1:11),
+                     labels= ScaleXmod)
+
+##  Entrenamiento del mejor modelo
+
+best_model <- as.formula("Ingtot_fin~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo+factor(actividad)+factor(ocupacion_empleo)")
+
+model_m7<-train(best_model,
+                data = df_pers_ing_1[,var_mod_ingre],
+                trControl = trainControl(method = "cv", number = 5),
+                method = "null") # specifying regression model
+
+
+## Predicción modelo m7
+
+df_test_per$pred_ing <- exp(predict(model_m7, df_pers_ing_test))
+
+## Predicción final modelo m7 
+
+df_test_hog_fin <- df_test_per[,c("id","pred_ing")] %>%  group_by(id) %>%
+  summarise(pred_ingreso = sum(pred_ing)) 
+
+df_test_hog <- df_test_hog %>% inner_join(df_test_hog_fin, by="id") %>%
+  mutate(Pobre=ifelse(pred_ingreso<Lp*personas_x_Ug,
+                      1,
+                      0)) %>%
+  mutate(Pobre=factor(Pobre, level=c(1,0), labels=c("Pobre", "No_Pobre")))
 
 
 
