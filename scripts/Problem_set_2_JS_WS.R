@@ -446,4 +446,94 @@ for (i in model_knn){
 ### Todas las matices de confusión de kNN
 KNN
 
+### Modelo  Logit
+
+## solver packages conflicts
+predict <- stats::predict
+
+## Logit normal ------------------
+
+## Modelo a ajustar
+model <- as.formula("Pobre~factor(actividad_jef)+factor(niv_educ_jef)+personas_x_Ug+factor(Ocupacion_vivienda)+num_cuartos_exclus_hog+ContEspec+
+      Subsidiado+prop_si_cotiza+prop_no_cotiza+Pensionado+factor(Depto)+edad_media+prop_hombre+prop_mujer")
+
+## Entrenamiento
+glm_logit <- glm(model , family=binomial(link="logit") , data=training)
+
+## Predicción
+testing$predict_logit <- predict(glm_logit , testing , type="response")
+
+## Matriz de confusion
+confusionMatrix(data=testing$p_logit, 
+                reference=testing$Pobre , 
+                mode="sens_spec" , positive="Pobre")
+
+
+## Logit CV 
+
+## define control de entrenamiento
+fiveStats <- function(...) c(twoClassSummary(...), defaultSummary(...))
+control <- trainControl(method = "cv", number = 5,
+                        summaryFunction = fiveStats, 
+                        classProbs = TRUE,
+                        verbose=FALSE,
+                        savePredictions = T)
+## Entrenamiento
+
+nrow(logit_cv)
+logit_cv = train(model,
+                 data=training,
+                 method="glm",
+                 trControl = control,
+                 family = "binomial",
+                 preProcess = c("center", "scale"))
+logit_cv
+
+## predicción
+testing$p_logit_cv <- predict(logit_cv , testing , type="prob")[1] 
+
+## ROC
+pred <- prediction(testing$p_logit_cv , testing$Pobre)
+
+roc_ROCR <- performance(pred,"tpr","fpr")
+
+plot(roc_ROCR, main = "ROC curve", colorize = T)
+abline(a = 0, b = 1)
+
+auc_roc = performance(pred, measure = "auc")
+auc_roc@y.values[[1]]
+
+## Encontrar punto de corte óptimo
+
+evalResults <- evaluation$Pobre
+
+evalResults$Roc <- predict(logit_cv, newdata = evaluation,
+                           type = "prob")
+
+rfROC <- roc(evalResults$Pobre, evalResults$Roc, levels = rev(levels(evalResults$Pobre)))
+
+rfROC
+
+rfTresh_log_cv <- coords(rfROC, x = "best", best.method = "closest.topleft")
+
+rfTresh_log_cv ## punto de corte óptimo Logit CV
+
+
+## Puntos de corte de los modelos 
+
+## Logit 
+
+testing <- testing %>% 
+  mutate(p_logit=ifelse(predict_logit>0.5,1,0) %>% 
+           factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+## Logit CV
+
+testing <- testing %>% 
+  mutate(p_logit_cv=ifelse(p_logit_cv>0.5,1,0) %>% 
+           factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+testing <- testing %>% 
+  mutate(p_logit_cv_th=ifelse(p_logit_cv>rfTresh_log_cv,1,0) %>% 
+           factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
