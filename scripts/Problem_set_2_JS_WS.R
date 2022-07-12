@@ -390,7 +390,7 @@ df_pers_ing_test <- df_pers_ing_test %>% mutate(edad_sqr=edad^2,
 
 #### 1) Problema de clasificación:  POBREZA -----------------------------------------------------
 
-set.seed(202207) ## fijo la semilla
+set.seed(777) ## fijo la semilla
 
 ## particiones de la muestra
 
@@ -424,20 +424,24 @@ var_knn <- c("num_cuartos_exclus_hog", "Ocupacion_vivienda","personas_x_Ug","eda
 x <- scale(df_train_hog_final[,var_knn]) ## re escalar media 0 sd 1 
 apply(x,2,sd) ## comprobamos que sd=1
 
-model_knn <- c(1,5) #,7,10,13)
+model_knn <- c(1) #,5,7,10,13)
+
 KNN <- data.frame()
+#ejecutar loop para k vecinos
 for (i in model_knn){
   k <- knn(train=x[split1,], ## base de entrenamiento estan todas menos las de testeo
-           test=x[-split1,],   ## base de testeo
+           test=testing,   ## base de testeo
            cl=df_train_hog_final$Pobre[split1], ## outcome
            k=i)        ## vecinos 
   
   
-  #data.frame(df_test_hog_final$Pobre[-training],k1)
-  
+  #data.frame(trainig$Pobre,k1)
+  nombre = paste0("p_k",i)
+  pobre_k <- data.frame(nombre = k)
+  training <- cbind(training,pobre_k)
   ## matriz de confusión esta me permite hacer la matriz
   cm_k <- confusionMatrix(data=k , 
-                          reference=df_train_hog_final$Pobre[-split1] , 
+                          reference=testing , 
                           mode="sens_spec" , 
                           positive="Pobre")$table
   cm <- data.frame(cbind(modelo = paste0("Knn_", i),cm_k))
@@ -451,7 +455,7 @@ KNN
 ## solver packages conflicts
 predict <- stats::predict
 
-## Logit normal ------------------
+## Logit normal -----------------------------------------------------------------------------
 
 ## Modelo a ajustar
 model <- as.formula("Pobre~factor(actividad_jef)+factor(niv_educ_jef)+personas_x_Ug+factor(Ocupacion_vivienda)+num_cuartos_exclus_hog+ContEspec+
@@ -463,7 +467,7 @@ glm_logit <- glm(model , family=binomial(link="logit") , data=training)
 ## Predicción
 testing$predict_logit <- predict(glm_logit , testing , type="response")
 
-## Matriz de confusion
+## Matriz de confusion de logit normal
 confusionMatrix(data=testing$p_logit, 
                 reference=testing$Pobre , 
                 mode="sens_spec" , positive="Pobre")
@@ -519,7 +523,173 @@ rfTresh_log_cv <- coords(rfROC, x = "best", best.method = "closest.topleft")
 rfTresh_log_cv ## punto de corte óptimo Logit CV
 
 
-## Puntos de corte de los modelos 
+
+## Lasso- Ridge Logit y ElasticNet Cross-Validation------------------------------------- 
+
+## Definición de funciones de estadísticos y Grilla de lambda-----------------------------------------------------------------------
+set.seed(777)
+fiveStats <- function(...) c(twoClassSummary(...), defaultSummary(...))
+ctrl <- trainControl(method = "cv",
+                     number = 5,
+                     summaryFunction = fiveStats,
+                     classProbs = TRUE,
+                     verbose=FALSE,
+                     savePredictions = T)
+
+lambda_grid <- 10~ seq(-4,0.01, length = 100) ## en la practica se utilizan grillas de 100, 200 o 300
+
+lambda_grid #Grilla de lambda
+
+
+
+## modelos por correr de lasso, ridge y elastic net -------------------------------------------------
+
+#vector de modelos 
+modelos_reg <-c('NULL', 'expand.grid(alpha =0, lambda=lambda_grid)', 'expand.grid(alpha =1, lambda=lambda_grid)') 
+
+sensibili <- data.frame()     # dataframe para guardar estadísticos
+#predicciones <- data.frame()  # dataframe para guardar predicciones
+auc <- data.frame()           # dataframe para guardar las  áreas bajo la curva
+curvas_ROC <- list()          # Lista para guardar las curvas ROC
+rfThresh_fin <- data.frame()  #dataframe para guardar threshold
+
+# Loop para entrenar, predecir y encontrar puntos de corte de lambda de los modelos lasso, ridge y elastic net
+for (met in modelos_reg) {
+  
+  #entrenamiento de los modelos para cada elemento de la lista modelos_reg
+  mylogit_lasso_acc <- train(
+    model,
+    data = training,
+    method = "glmnet",  ## para lasso
+    trControl = ctrl,
+    family = "binomial",
+    metric = "Sens", ## me va a elegir el lambda que me maximiza la la sensibilidad
+    tunGrid = met, ## si esta parte es Null se hace un ElasticNEt, con alpha==0 es un Ridge y con alpha=1 es un lasso
+    preProcess = c("center", "scale")
+  )
+  
+  #condicionales para nombrer modelos
+  if ( met == 'NULL') {
+    mod <- c('Elasticnet')
+  } else if ( met == 'expand.grid(alpha =0, lambda=lambda_grid)') {
+    mod <- c('Lasso_logit')
+  } else if ( met == 'expand.grid(alpha =1, lambda=lambda_grid)') {
+    mod <- c('Ridge_logit')
+  }
+  # Se guarda los valores de sensibilidad, Especificidad y lambda
+  x<-as.data.frame(cbind(Modelo = mod,alpha =mylogit_lasso_acc[["results"]][["alpha"]],lambda = mylogit_lasso_acc[["results"]][["lambda"]], Sensibility=mylogit_lasso_acc[["results"]][["Sens"]],Specify=mylogit_lasso_acc[["results"]][["Spec"]]))
+  sens <- x[x$lambda==mylogit_lasso_acc[["bestTune"]][["lambda"]] & x$alpha==mylogit_lasso_acc[["bestTune"]][["alpha"]],]
+  
+  # dataframe con las estadísticas anteriores
+  sensibili <- rbind(sensibili, sens)
+  
+  #Predicciones de los modelos
+  pred <- predict(mylogit_lasso_acc, testing, type="prob")[1]
+  #agregar pred a la base de testing hogares
+  testing <- cbind(testing, pred$Pobre)
+  
+  colnames(testing)[ncol(testing)] <- paste0('p_',mod) #renombrar variable pred en testing
+  preds <- prediction(testing[,ncol(testing)] , testing$Pobre) # predicción de pobreza para roc
+  
+  # curva ROC y AUC
+  roc_ROCR <- list(mod = performance(preds,"tpr","fpr"))
+  curvas_ROC <- append(curvas_ROC, roc_ROCR) 
+  
+  auc_roc = performance(preds, measure = "auc")
+  auc <- rbind(auc, auc_roc@y.values[[1]])
+  cat("Salió: ",mod,"\n")
+  
+  ## Evaluación del Threshold en evaluation para estos modelos
+  
+  evalResults <- data.frame(Pobre = evaluation$Pobre) #agregamos la variable pobre observada
+  
+  evalResults$Roc_logid_lasso <- predict(mylogit_lasso_acc, newdata = evaluation, type = "prob")[,1]
+  
+  rfROC <- roc(evalResults$Pobre, evalResults$Roc_logid_lasso, levels = rev(levels(evalResults$Pobre)))
+  
+  rfThresh <- coords(rfROC, x = "best", best.method = "closest.topleft") %>% mutate(modelo = mod)
+  
+  rfThresh_fin <- rbind(rfThresh_fin,rfThresh)
+  cat("Salió: ",mod,"\n")
+}
+
+rfThresh_fin ## puntos de corte óptimos para modelos del loop
+
+
+## Random Forest ------------------------------------------------------
+
+
+## Este modelo toma un tiempo en ejecutarse por lo que guardamos el modelo para estimar luego
+set.seed(777)
+fiveStats <- function(...) c(twoClassSummary(...), defaultSummary(...))
+ctrl <- trainControl(method = "cv",
+                     number = 5,
+                     summaryFunction = fiveStats,
+                     classProbs = TRUE,
+                     verbose=FALSE,
+                     savePredictions = T)
+forest <- train(
+  model,
+  data=training,
+  method ="rf",
+  trControl = ctrl,
+  family = "binomial",
+  metric="Sens",
+  #preProcess = c("center", "scale")
+)
+
+saveRDS(forest, "Data/modelo_forest.rds")
+
+
+## uso del modelo Random Forest
+
+myforest <- readRDS("Data/modelo_forest.rds")
+
+pred <- predict(myforest, testing, type="prob")[1]
+testing <- cbind(testing, pred$Pobre)
+colnames(testing)[ncol(testing)] <- c("pr_forest")
+preds <- prediction(testing$pr_forest , testing$Pobre)
+
+# curva ROC y AUC
+roc_ROCR_rf <- performance(preds,"tpr","fpr")
+curvas_ROC <- append(curvas_ROC, roc_ROCR_rf)
+
+auc_roc_rf <- performance(preds, measure = "auc")
+auc <- rbind(auc, auc_roc_rf@y.values[[1]])
+
+
+plot(curvas_ROC[[4]], add=TRUE, colorize = FALSE, col= "yellow")
+
+
+## Evaluación del Threshold en evaluation 
+
+evalResults <- data.frame(Pobre = evaluation$Pobre)
+evalResults$rROC_forest <- predict(forest, newdata = evaluation, type = "prob")[,1]
+#colnames(testing)[ncol(testing)] <- paste0('pr_',mod)
+rfROC <- roc(evalResults$Pobre, evalResults$rROC_forest, levels = rev(levels(evalResults$Pobre)))
+
+rfThresh <- coords(rfROC, x = "best", best.method = "closest.topleft") %>% mutate(modelo = "Random_forest")
+rfThresh
+rfThresh_fin <- rbind(rfThresh_fin,rfThresh)
+
+
+##Curvas de ROC
+plot(roc_ROCR, main = "ROC curve", colorize = FALSE, col="black")
+plot(curvas_ROC[[1]], add=TRUE,  colorize = FALSE, col="red")
+plot(curvas_ROC[[2]], add=TRUE, colorize = FALSE, col="blue")
+plot(curvas_ROC[[3]], add=TRUE, colorize = FALSE, col= "green")
+plot(curvas_ROC[[4]], add=TRUE, colorize = FALSE, col= "yellow")
+abline(a = 0, b = 1)
+
+rfThresh_fin
+auc
+sensibili
+
+
+
+## Clasificaciones
+
+# KNN: ya esta en la base de testing
 
 ## Logit 
 
@@ -536,4 +706,50 @@ testing <- testing %>%
 testing <- testing %>% 
   mutate(p_logit_cv_th=ifelse(p_logit_cv>rfTresh_log_cv,1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+# lasso-logit
+
+testing <- testing %>% 
+  mutate(p_Lasso_logit=ifelse(p_Lasso_logit>0.5,1,0) %>% 
+           factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+testing <- testing %>% 
+  mutate(p_Lasso_logit_th=ifelse(p_Lasso_logit>rfThresh_fin[2,1],1,0) %>% 
+           factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+# Ridge-logit
+
+testing <- testing %>% 
+  mutate(p_Ridge_logit=ifelse(p_Ridge_logit>0.5,1,0) %>% 
+           factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+testing <- testing %>% 
+  mutate(p_Ridge_logit_th=ifelse(p_Ridge_logit>rfThresh_fin[3,1],1,0) %>% 
+           factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+
+# Elastic Net
+
+testing <- testing %>% 
+  mutate(p_Elasticnet=ifelse(p_Elasticnet>0.5,1,0) %>% 
+           factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+testing <- testing %>% 
+  mutate(p_Elasticnet_th=ifelse(p_Elasticnet>rfThresh_fin[1,1],1,0) %>% 
+           factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+# Random Forest
+
+testing <- testing %>% 
+  mutate(pr_forest=ifelse(pr_forest>0.5,1,0) %>% 
+           factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+testing <- testing %>% 
+  mutate(pr_forest_th=ifelse(pr_forest>rfThresh_fin[4,1],1,0) %>% 
+           factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+
+
+
+
 
