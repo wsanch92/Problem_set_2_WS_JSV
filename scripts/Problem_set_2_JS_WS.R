@@ -16,7 +16,7 @@ dir()
 
 # Cargar librerías -----------------------------------------------------------
 require(pacman)
-p_load(tidyverse,dplyr,here, rvest, tibble,rio,skimr,stargazer,reshape2, class, caret, ROCR, pROC,randomForest,fastAdaboost) ## caret
+p_load(gtsummary,tidyverse,dplyr,here, rvest, tibble,rio,skimr,stargazer,reshape2, class, caret, ROCR, pROC,randomForest,fastAdaboost) ## caret
 
 
 
@@ -56,7 +56,7 @@ skim(df_train_per_1$Ingtot)
 ##revisar ingresos nulos
 ggplot() +
   geom_histogram(df_train_per_1[is.na(df_train_per_1$Ingtot),],mapping = aes(x=P6040))
-skim(df_train_per_1[is.na(df_train_per_1$Ingtot),]$P6040)
+#skim(df_train_per_1[is.na(df_train_per_1$Ingtot),]$P6040)
 
 #table(df_train_per_1[is.na(df_train_per_1$P6210s1),]$Depto)
 #View(df_train_per_1[is.na(df_train_per_1$P6210s1),])
@@ -227,7 +227,7 @@ df_train_hog_final <- df_train_hog %>% left_join(IngrXhog, by="id") %>%
                                                                     0)) %>%
   mutate(Pobre=factor(Pobre, level=c(1,0), labels=c("Pobre", "No_Pobre")))
 
-skim(df_train_hog_final)
+#skim(df_train_hog_final)
 
 
 ## Test: pegamos la base de hogar test con las variables de persona creadas por hogar
@@ -244,13 +244,16 @@ prop.table(table(df_train_hog_final$Pobre))
 #######Creación variables modelo de ingresos#########
 
 ##Asignación de variables de ingreso a las bases de personas final
-var_model_ing <- c("id","Ingtot","Ingtot_fin")
-df_pers_ing <- df_train_per %>% left_join(df_train_hog,by="id") %>% left_join(df_train_per_1[,var_model_ing], by="id")
-skim(df_pers_ing)
+var_model_ing <- c("id","Orden","Ingtot","Ingtot_fin")
+df_pers_ing <- df_train_per %>% left_join(df_train_per_1[,var_model_ing], by=c("id","Orden")) %>% left_join(df_train_hog,by="id")
+
+
+
+#skim(df_pers_ing)
 
 ##Filtro de base para personas menores de 15 años y con ingresos iguales a 0
 df_pers_ing_1 <- df_pers_ing[(df_pers_ing$edad >= 15) & (df_pers_ing$Ingtot_fin>0), ]
-skim(df_pers_ing_1)
+#skim(df_pers_ing_1)
 
 ## Variables del modelo de ingresos base training personas ##
 ##edad,edad^2,sexo,nivel_educativo,actividad,tiempo_empresa, tiempo_empresa^2,ocupacion_empleo, ReciAyudaInst, Ocupacion_vivienda, cotiza_pension, HorasTrabSemana
@@ -266,8 +269,8 @@ df_pers_ing_1 <- df_pers_ing_1 %>% mutate(tiempo_empresa=ifelse(is.na(tiempo_emp
                                                                 0,
                                                                 tiempo_empresa),
                                           tiempo_empresa_sqr=tiempo_empresa^2)
-skim(df_pers_ing_1$tiempo_empresa)
-skim(df_pers_ing_1$tiempo_empresa_sqr)
+#skim(df_pers_ing_1$tiempo_empresa)
+#skim(df_pers_ing_1$tiempo_empresa_sqr)
 
 
 ## imputación de recibe ayudas, 1=sí 0=no
@@ -276,14 +279,14 @@ df_pers_ing_1 <- df_pers_ing_1 %>% mutate(ReciAyudaInst=ifelse(is.na(ReciAyudaIn
                                                                | ReciAyudaInst==9,
                                                                0,
                                                                1))
-skim(df_pers_ing_1$ReciAyudaInst)
+#skim(df_pers_ing_1$ReciAyudaInst)
 
 ## imputación ocupación empleo, se imputan como 0 los N.A. ya que en la actividad reportada manifiestan no estar trabajando
 table(df_pers_ing_1[is.na(df_pers_ing_1$ocupacion_empleo),]$actividad)
 df_pers_ing_1 <- df_pers_ing_1 %>% mutate(ocupacion_empleo=ifelse(is.na(ocupacion_empleo)==T,
                                                                   0,
                                                                   ocupacion_empleo))
-skim(df_pers_ing_1$ocupacion_empleo)
+#skim(df_pers_ing_1$ocupacion_empleo)
 
 
 ## imputacón cotiza_pension , se imputan como 0 los N.A. ya que en la actividad reportada manifiestan no estar trabajando
@@ -292,7 +295,7 @@ table(df_pers_ing_1[is.na(df_pers_ing_1$cotiza_pension),]$actividad)
 df_pers_ing_1 <- df_pers_ing_1 %>% mutate(cotiza_pension=ifelse(is.na(cotiza_pension)==T,
                                                                 2,
                                                                 cotiza_pension))
-skim(df_pers_ing_1$cotiza_pension)
+#skim(df_pers_ing_1$cotiza_pension)
 
 ## imputación horas de trabajo a la semana, se imputan como 0 los N.A. ya que en la actividad reportada manifiestan no estar trabajando
 table(df_pers_ing_1[is.na(df_pers_ing_1$HorasTrabSemana),]$actividad)
@@ -300,7 +303,7 @@ df_pers_ing_1 <- df_pers_ing_1 %>% mutate(HorasTrabSemana=ifelse(is.na(HorasTrab
                                                                  0,
                                                                  HorasTrabSemana))
 
-skim(df_pers_ing_1$HorasTrabSemana)
+#skim(df_pers_ing_1$HorasTrabSemana)
 
 ## Creación de edad^2 y recodificación de sexo
 
@@ -311,12 +314,11 @@ df_pers_ing_1 <- df_pers_ing_1 %>% mutate(edad_sqr=edad^2,
 
 df_pers_ing_1 <- df_pers_ing_1 %>% mutate(Ingtot_log=log(Ingtot_fin))
 
-
 ## Variables del modelo de ingresos base test personas ##
 
 var_model_ing <- c("id")
 df_pers_ing_test <- df_test_per %>% left_join(df_test_hog,by="id")
-skim(df_pers_ing)
+#skim(df_pers_ing)
 
 ## Imputación de las siguientes varibales: niv_educativo,actividad,tiempo_empresa, ocupacion_empleo,ReciAyudaInst,cotiza_pension,HorasTrabSemana
 
@@ -329,7 +331,7 @@ df_pers_ing_test <- df_pers_ing_test %>% mutate(actividad=ifelse((is.na(activida
                                                                  3,
                                                                  6))
 
-skim(df_pers_ing_test$actividad)
+#skim(df_pers_ing_test$actividad)
 
 ## Se imputan los valores N.A. como 0 en la variable de tiempo_empresa, ya que en la actividad reportada manifiestan no estar trabajando.
 table(df_pers_ing_test[is.na(df_pers_ing_test$tiempo_empresa),]$edad)
@@ -340,8 +342,8 @@ df_pers_ing_test <- df_pers_ing_test %>% mutate(tiempo_empresa=ifelse(is.na(tiem
                                                                       0,
                                                                       tiempo_empresa),
                                                 tiempo_empresa_sqr=tiempo_empresa^2)
-skim(df_pers_ing_test$tiempo_empresa)
-skim(df_pers_ing_test$tiempo_empresa_sqr)
+#skim(df_pers_ing_test$tiempo_empresa)
+#skim(df_pers_ing_test$tiempo_empresa_sqr)
 
 ## imputacion nivel educativo, se imputan en 0 ya que las edades de los individuos son de 0 a 2 años
 table(df_pers_ing_test[is.na(df_pers_ing_test$niv_educativo),]$edad)
@@ -350,7 +352,7 @@ df_pers_ing_test <- df_pers_ing_test %>% mutate(niv_educativo=ifelse(is.na(niv_e
                                                                      0,
                                                                      niv_educativo))
 
-skim(df_pers_ing_test$niv_educativo)
+#skim(df_pers_ing_test$niv_educativo)
 
 
 ## imputación de recibe ayudas, 1=sí 0=no
@@ -359,14 +361,14 @@ df_pers_ing_test <- df_pers_ing_test %>% mutate(ReciAyudaInst=ifelse(is.na(ReciA
                                                                      | ReciAyudaInst==9,
                                                                      0,
                                                                      1))
-skim(df_pers_ing_test$ReciAyudaInst)
+#skim(df_pers_ing_test$ReciAyudaInst)
 
 ## imputación ocupación empleo, se imputan como 0 ya que dentro de las actividades reportadas manifiestan no estar trabajando
 table(df_pers_ing_test[is.na(df_pers_ing_test$ocupacion_empleo),]$actividad)
 df_pers_ing_test <- df_pers_ing_test %>% mutate(ocupacion_empleo=ifelse(is.na(ocupacion_empleo)==T,
                                                                         0,
                                                                         ocupacion_empleo))
-skim(df_pers_ing_test$ocupacion_empleo)
+#skim(df_pers_ing_test$ocupacion_empleo)
 
 ## imputacón cotiza_pension 
 table(df_pers_ing_test$cotiza_pension)
@@ -382,7 +384,7 @@ df_pers_ing_test <- df_pers_ing_test %>% mutate(cotiza_pension=ifelse(is.na(coti
                                                                                     ifelse(is.na(cotiza_pension)==T,
                                                                                            2,
                                                                                            cotiza_pension)))))
-skim(df_pers_ing_test$cotiza_pension)
+#skim(df_pers_ing_test$cotiza_pension)
 
 ## Creación de edad^2 y recodificación de sexo
 
@@ -419,6 +421,31 @@ prop.table(table(testing$Pobre))
 
 prop.table(table(evaluation$Pobre))
 
+#### TABLAS Y GRÁFICOS --------------------------------------------------------------------------------------
+## tabla de estadísticas de las variales del modelo de Clasificación
+var_clas_tabla <- c("Pobre","actividad_jef","niv_educ_jef","Ocupacion_vivienda","edad_media","personas_x_Ug","num_cuartos_exclus_hog","prop_hombre",
+                    "prop_mujer","ContEspec","Subsidiado","prop_si_cotiza","prop_no_cotiza","Pensionado")
+tbl_summary(df_train_hog_final[,var_clas_tabla], statistic = list(all_continuous()~ "{mean} ({sd})" ),
+            label=list(Pobre ~ "Pobreza", actividad_jef ~"Actividad del jefe de hogar", niv_educ_jef~"Nivel educativo del jefe de Hogar",
+                       Ocupacion_vivienda ~ "Ocupación de la vivienda", edad_media ~ "Edad promedio del hogar",personas_x_Ug ~ "Personas por Unidad de gasto",
+                       num_cuartos_exclus_hog ~ "Número de cuartos exclusivos",prop_hombre~"Proporción de hombres",prop_mujer ~ "Proporción de mujeres",
+                       ContEspec ~ "Proporción de personas en régimen contributivo y especial", Subsidiado ~ "Proporción de personas en régimen Subsidiado",
+                       prop_si_cotiza~"Proporción de personas que cotizan pensión",prop_no_cotiza~"Proporción de personas que No cotizan pensión",
+                       Pensionado ~ "Proporción de personas pensionadas"))
+
+## tabla de estadísticas de las variales del modelo de Ingresos
+var_ingreso_tabla <- c("sexo","actividad","ocupacion_empleo","cotiza_pension","Ocupacion_vivienda","ReciAyudaInst",
+                    "Ingtot","Ingtot_fin","edad","tiempo_empresa")
+tbl_summary(df_pers_ing[,var_ingreso_tabla], statistic = list(all_continuous()~ "{mean} ({sd})" ),
+            label=list(sexo ~ "Género", actividad ~"Actividad", ocupacion_empleo~"Posición ocupacional",
+                       Ocupacion_vivienda ~ "Ocupación de la vivienda",ReciAyudaInst ~ "Recibe ayudas institucionales",
+                       Ingtot ~ "Ingreso total sin imputar", Ingtot_fin ~ "Ingreso total imputado",
+                       edad ~ "Edad promedio del hogar", tiempo_empresa~ "Horas trabajadas al mes",
+                       cotiza_pension ~ "Cotizante a pensión"))
+
+
+
+
 
 ### Crear modelo K-vecinos cercanos k=1 hasta k=13--------------------------------
 
@@ -431,6 +458,7 @@ apply(x,2,sd) ## comprobamos que sd=1
 model_knn <- c(1,5,7,10,13)
 
 KNN <- data.frame()
+KNN_sensibility <- c()
 #ejecutar loop para k vecinos
 for (i in model_knn){
   k <- knn(train=x[split1,], ## base de entrenamiento estan todas menos las de testeo
@@ -443,12 +471,15 @@ for (i in model_knn){
   cm_k <- confusionMatrix(data=k , 
                           reference=df_train_hog_final$Pobre[-split1] , 
                           mode="sens_spec" , 
-                          positive="Pobre")$table
-  cm <- data.frame(cbind(modelo = paste0("Knn_", i),cm_k))
+                          positive="Pobre")
+  cm <- data.frame(cbind(modelo = paste0("Knn_", i),cm_k$table))
   KNN<-rbind(KNN, cm)
+  KNN_sens <- data.frame(cbind(Modelo = paste0("Knn_",i),Sensibility = cm_k[["byClass"]][["Sensitivity"]]))
+  KNN_sensibility <- c(KNN_sensibility, KNN_sens,)
 }
 ### Todas las matices de confusión de kNN
 KNN
+KNN_sensibility
 
 ### Modelo  Logit
 
@@ -479,6 +510,8 @@ confusionMatrix(data=testing$predict_logit,
 
 ## Logit CV 
 
+predict <- stats::predict
+
 ## define control de entrenamiento
 fiveStats <- function(...) c(twoClassSummary(...), defaultSummary(...))
 control <- trainControl(method = "cv", number = 5,
@@ -502,31 +535,27 @@ testing$p_logit_cv <- predict(logit_cv , testing , type="prob")[1]
 ## ROC
 pred <- prediction(testing$p_logit_cv , testing$Pobre)
 
-roc_ROCR <- performance(pred,"tpr","fpr")
+roc_ROCR_logit_cv <- performance(pred,"tpr","fpr")
 
 auc_roc = performance(pred, measure = "auc")
-auc_roc@y.values[[1]]
+auc_roc@y.values[[1]] #0.8803616
 
 ## Encontrar punto de corte óptimo
 
-evalResults <- evaluation$Pobre
 
-evalResults$Roc <- predict(logit_cv, newdata = evaluation,
-                           type = "prob")
+evalResults <- data.frame(Pobre = evaluation$Pobre)
 
-rfROC <- roc(evalResults$Pobre, evalResults$Roc, levels = rev(levels(evalResults$Pobre)))
+evalResults$Roc_logid_cv <- predict(logit_cv, newdata = evaluation, type = "prob")[,1]
 
-rfROC
+rfROC <- roc(evalResults$Pobre, evalResults$Roc_logid_cv, levels = rev(levels(evalResults$Pobre)))
 
-rfTresh_log_cv <- coords(rfROC, x = "best", best.method = "closest.topleft")
+rfThresh <- coords(rfROC, x = "best", best.method = "closest.topleft")
 
-rfTresh_log_cv ## punto de corte óptimo Logit CV
+rfThresh[1] # 0.2658217
 
+## Lasso- Ridge Logit y ElasticNet Cross-Validation---------------------------
 
-
-## Lasso- Ridge Logit y ElasticNet Cross-Validation------------------------------------- 
-
-## Definición de funciones de estadísticos y Grilla de lambda-----------------------------------------------------------------------
+## Definición de funciones de estadísticos y Grilla de lambda
 set.seed(777)
 fiveStats <- function(...) c(twoClassSummary(...), defaultSummary(...))
 ctrl <- trainControl(method = "cv",
@@ -620,32 +649,39 @@ rfThresh_fin ## puntos de corte óptimos para modelos del loop
 
 
 ## Este modelo toma un tiempo en ejecutarse por lo que guardamos el modelo para estimar luego
-set.seed(777)
-fiveStats <- function(...) c(twoClassSummary(...), defaultSummary(...))
-ctrl <- trainControl(method = "cv",
-                     number = 5,
-                     summaryFunction = fiveStats,
-                     classProbs = TRUE,
-                     verbose=FALSE,
-                     savePredictions = T)
-forest <- train(
-  model,
-  data=training,
-  method ="rf",
-  trControl = ctrl,
-  family = "binomial",
-  metric="Sens",
-  #preProcess = c("center", "scale")
-)
+#set.seed(202207)
+#fiveStats <- function(...) c(twoClassSummary(...), defaultSummary(...))
+#ctrl <- trainControl(method = "cv",
+#                     number = 5,
+#                     summaryFunction = fiveStats,
+#                     classProbs = TRUE,
+#                     verbose=FALSE,
+#                     savePredictions = T)
+#forest <- train(
+#  model,
+#  data=training,
+#  method ="rf",
+#  trControl = ctrl,
+#  family = "binomial",
+#  metric="Sens",
+#  #preProcess = c("center", "scale")
+#)
 
 ## Guardamos el modelo para uso posterior 
-saveRDS(forest, "Data/modelo_forest.rds")
+#saveRDS(forest, "Data/modelo_forest.rds")
 
 
 ## uso del modelo Random Forest
 
 myforest <- readRDS("Data/modelo_forest.rds") ## se trae el modelo RF para predecir 
 
+x<-as.data.frame(cbind(Modelo = c("Random_forest"),alpha = myforest[["results"]][["mtry"]],lambda = c(""), Sensibility=myforest[["results"]][["Sens"]],Specify=myforest[["results"]][["Spec"]]))
+sens <- x[x$alpha==myforest[["bestTune"]][["mtry"]],]
+
+# dataframe con las estadísticas anteriores
+sensibili <- rbind(sensibili, sens)
+
+testing <- testing[,-(ncol(testing)-1:ncol(testing))]
 ## Predicciones
 pred <- predict(myforest, testing, type="prob")[1]
 testing <- cbind(testing, pred$Pobre)
@@ -656,17 +692,15 @@ preds <- prediction(testing$pr_forest , testing$Pobre)
 roc_ROCR_rf <- performance(preds,"tpr","fpr")
 curvas_ROC <- append(curvas_ROC, roc_ROCR_rf)
 
+## Area bajo la curva
 auc_roc_rf <- performance(preds, measure = "auc")
 auc <- rbind(auc, auc_roc_rf@y.values[[1]])
-
-
-plot(curvas_ROC[[4]], add=TRUE, colorize = FALSE, col= "yellow")
-
+colnames(auc)<- c("AUC")
 
 ## Evaluación del Threshold en evaluation 
 
 evalResults <- data.frame(Pobre = evaluation$Pobre)
-evalResults$rROC_forest <- predict(forest, newdata = evaluation, type = "prob")[,1]
+evalResults$rROC_forest <- predict(myforest, newdata = evaluation, type = "prob")[,1]
 #colnames(testing)[ncol(testing)] <- paste0('pr_',mod)
 rfROC <- roc(evalResults$Pobre, evalResults$rROC_forest, levels = rev(levels(evalResults$Pobre)))
 
@@ -676,17 +710,17 @@ rfThresh_fin <- rbind(rfThresh_fin,rfThresh)
 
 
 ##Curvas de ROC
-plot(roc_ROCR, main = "ROC curve", colorize = FALSE, col="black")
+plot(roc_ROCR_logit_cv, main = "ROC curve", colorize = FALSE, col="black")
 plot(curvas_ROC[[1]], add=TRUE,  colorize = FALSE, col="red")
 plot(curvas_ROC[[2]], add=TRUE, colorize = FALSE, col="blue")
 plot(curvas_ROC[[3]], add=TRUE, colorize = FALSE, col= "green")
 plot(curvas_ROC[[4]], add=TRUE, colorize = FALSE, col= "yellow")
 abline(a = 0, b = 1)
 
-rfThresh_fin
+rfThresh_fin[,-(2:3)]
 auc
 sensibili
-
+colnames(auc) <- c("modelos")
 
 
 ## Clasificaciones
@@ -696,63 +730,133 @@ sensibili
 ## Logit 
 
 testing <- testing %>% 
-  mutate(p_logit=ifelse(predict_logit>0.5,1,0) %>% 
+  mutate(p_logit_bayes=ifelse(predict_logit>0.5,1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+cm_logit <- confusionMatrix(data=testing$p_logit_bayes, 
+                               reference=testing$Pobre , 
+                               mode="sens_spec" , positive="Pobre")
+cm_logit$table
+cm_logit[["byClass"]][["Sensitivity"]]
+
 
 ## Logit CV
 
 testing <- testing %>% 
-  mutate(p_logit_cv=ifelse(p_logit_cv>0.5,1,0) %>% 
+  mutate(p_logit_cv_bayes=ifelse(p_logit_cv>0.5,1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+cm_logit_cv <- confusionMatrix(data=testing$p_logit_cv_bayes, 
+                            reference=testing$Pobre , 
+                            mode="sens_spec" , positive="Pobre")
+cm_logit_cv$table
+cm_logit_cv[["byClass"]][["Sensitivity"]]
+
 
 testing <- testing %>% 
   mutate(p_logit_cv_th=ifelse(p_logit_cv>rfTresh_log_cv,1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
+cm_logit_cv_th <- confusionMatrix(data=testing$p_logit_cv_th, 
+                               reference=testing$Pobre , 
+                               mode="sens_spec" , positive="Pobre")
+cm_logit_cv_th$table
+cm_logit_cv_th[["byClass"]][["Sensitivity"]]
+
+
 # lasso-logit
 
 testing <- testing %>% 
-  mutate(p_Lasso_logit=ifelse(p_Lasso_logit>0.5,1,0) %>% 
+  mutate(p_Lasso_logit_bayes=ifelse(p_Lasso_logit>0.5,1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+cm_lasso <- confusionMatrix(data=testing$p_Lasso_logit_bayes, 
+                            reference=testing$Pobre , 
+                            mode="sens_spec" , positive="Pobre")
+cm_lasso$table
+cm_lasso[["byClass"]][["Sensitivity"]]
 
 testing <- testing %>% 
   mutate(p_Lasso_logit_th=ifelse(p_Lasso_logit>rfThresh_fin[2,1],1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
+cm_lasso_th <- confusionMatrix(data=testing$p_Lasso_logit_th, 
+                            reference=testing$Pobre , 
+                            mode="sens_spec" , positive="Pobre")
+cm_lasso_th$table
+cm_lasso_th[["byClass"]][["Sensitivity"]]
+
 # Ridge-logit
 
 testing <- testing %>% 
-  mutate(p_Ridge_logit=ifelse(p_Ridge_logit>0.5,1,0) %>% 
+  mutate(p_Ridge_logit_bayes=ifelse(p_Ridge_logit>0.5,1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+cm_ridge <- confusionMatrix(data=testing$p_Ridge_logit_bayes, 
+                         reference=testing$Pobre , 
+                         mode="sens_spec" , positive="Pobre")
+cm_ridge$table
+cm_ridge[["byClass"]][["Sensitivity"]]
 
 testing <- testing %>% 
   mutate(p_Ridge_logit_th=ifelse(p_Ridge_logit>rfThresh_fin[3,1],1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
+cm_ridge_th <- confusionMatrix(data=testing$p_Ridge_logit_th, 
+                            reference=testing$Pobre , 
+                            mode="sens_spec" , positive="Pobre")
+cm_ridge_th$table
+cm_ridge_th[["byClass"]][["Sensitivity"]]
 
 # Elastic Net
 
 testing <- testing %>% 
-  mutate(p_Elasticnet=ifelse(p_Elasticnet>0.5,1,0) %>% 
+  mutate(p_Elasticnet_bayes=ifelse(p_Elasticnet>0.5,1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+cm_EN <- confusionMatrix(data=testing$p_Elasticnet_bayes, 
+                         reference=testing$Pobre , 
+                         mode="sens_spec" , positive="Pobre")
+cm_EN$table
+cm_EN[["byClass"]][["Sensitivity"]]
 
 testing <- testing %>% 
   mutate(p_Elasticnet_th=ifelse(p_Elasticnet>rfThresh_fin[1,1],1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
+cm_EN_th <- confusionMatrix(data=testing$p_Elasticnet_th, 
+                         reference=testing$Pobre , 
+                         mode="sens_spec" , positive="Pobre")
+cm_EN_th$table
+cm_EN_th[["byClass"]][["Sensitivity"]]
+
+
 # Random Forest
 
 testing <- testing %>% 
-  mutate(pr_forest=ifelse(pr_forest>0.5,1,0) %>% 
+  mutate(pr_forest_bayes=ifelse(pr_forest>0.5,1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+cm_rf <- confusionMatrix(data=testing$pr_forest_bayes, 
+                reference=testing$Pobre , 
+                mode="sens_spec" , positive="Pobre")
+cm_rf$table
+cm_rf[["byClass"]][["Sensitivity"]]
 
 testing <- testing %>% 
   mutate(pr_forest_th=ifelse(pr_forest>rfThresh_fin[4,1],1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
+cm_rf_th <- confusionMatrix(data=testing$pr_forest_th, 
+                reference=testing$Pobre , 
+                mode="sens_spec" , positive="Pobre")$table
+
+cm_rf_th$table
+cm_rf_th[["byClass"]][["Sensitivity"]]
+
 ## Modelo predicción de ingresos 
 ## Estrutura del modelo de ingreso 
-var_mod_ingr <- c("id","edad","edad_sqr","sexo","niv_educativo","actividad","tiempo_empresa", "tiempo_empresa_sqr","ocupacion_empleo", "ReciAyudaInst", "Ocupacion_vivienda", "cotiza_pension", "HorasTrabSemana","mujer")
+var_mod_ingre <- c("id","Ingtot_log","edad","edad_sqr","sexo","niv_educativo","actividad","tiempo_empresa", "tiempo_empresa_sqr","ocupacion_empleo", "ReciAyudaInst", "Ocupacion_vivienda", "cotiza_pension", "HorasTrabSemana","mujer")
 
 ## definición de semilla 
 set.seed(777)
@@ -776,7 +880,7 @@ modelos <- list(Ingtot_log~edad+edad_sqr,
 MSE_CV <- c()
 for (i in modelos){
   model<-train(i,
-               data = df_pers_ing_test[,var_mod_ingre],
+               data = df_pers_ing_1[,var_mod_ingre],
                trControl = trainControl(method = "cv", number = 5),
                method = "null") # specifying regression model
   
