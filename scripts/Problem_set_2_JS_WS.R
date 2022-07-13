@@ -8,10 +8,10 @@ rm(list=ls()) ## limpiar ambiente
 cat("\014")   ## limpiar consola
 
 #directorio Walter
-setwd("C:/Users/walte/OneDrive/Documentos/Maestría en Economía Aplicada/Big Data/GitHub/Talleres/Problem_set_2_WS_JSV")
+#setwd("C:/Users/walte/OneDrive/Documentos/Maestría en Economía Aplicada/Big Data/GitHub/Talleres/Problem_set_2_WS_JSV")
 
 ##directorio Juan
-setwd("/Users/usuario/Desktop/Problem_set_2_WS_JSV")
+#setwd("/Users/usuario/Desktop/Problem_set_2_WS_JSV")
 dir()
 
 # Cargar librerías -----------------------------------------------------------
@@ -255,6 +255,7 @@ df_pers_ing <- df_train_per %>% left_join(df_train_per_1[,var_model_ing], by=c("
 df_pers_ing_1 <- df_pers_ing[(df_pers_ing$edad >= 15) & (df_pers_ing$Ingtot_fin>0), ]
 #skim(df_pers_ing_1)
 
+
 ## Variables del modelo de ingresos base training personas ##
 ##edad,edad^2,sexo,nivel_educativo,actividad,tiempo_empresa, tiempo_empresa^2,ocupacion_empleo, ReciAyudaInst, Ocupacion_vivienda, cotiza_pension, HorasTrabSemana
 
@@ -314,7 +315,9 @@ df_pers_ing_1 <- df_pers_ing_1 %>% mutate(edad_sqr=edad^2,
 
 df_pers_ing_1 <- df_pers_ing_1 %>% mutate(Ingtot_log=log(Ingtot_fin))
 
-## Variables del modelo de ingresos base test personas ##
+
+
+## Variables del modelo de ingresos base test personas ###############################################################
 
 var_model_ing <- c("id")
 df_pers_ing_test <- df_test_per %>% left_join(df_test_hog,by="id")
@@ -393,6 +396,11 @@ df_pers_ing_test <- df_pers_ing_test %>% mutate(edad_sqr=edad^2,
                                                              0,
                                                              1))
 
+## imputación horas de trabajo a la semana, se imputan como 0 los N.A. ya que en la actividad reportada manifiestan no estar trabajando
+table(df_pers_ing_test[is.na(df_pers_ing_test$HorasTrabSemana),]$actividad)
+df_pers_ing_test <- df_pers_ing_test %>% mutate(HorasTrabSemana=ifelse(is.na(HorasTrabSemana)==T,
+                                                                 0,
+                                                                 HorasTrabSemana))
 
 #### 1) Problema de clasificación:  POBREZA -----------------------------------------------------
 
@@ -458,7 +466,7 @@ apply(x,2,sd) ## comprobamos que sd=1
 model_knn <- c(1,5,7,10,13)
 
 KNN <- data.frame()
-KNN_sensibility <- c()
+KNN_sensibility <- data.frame()
 #ejecutar loop para k vecinos
 for (i in model_knn){
   k <- knn(train=x[split1,], ## base de entrenamiento estan todas menos las de testeo
@@ -475,7 +483,7 @@ for (i in model_knn){
   cm <- data.frame(cbind(modelo = paste0("Knn_", i),cm_k$table))
   KNN<-rbind(KNN, cm)
   KNN_sens <- data.frame(cbind(Modelo = paste0("Knn_",i),Sensibility = cm_k[["byClass"]][["Sensitivity"]]))
-  KNN_sensibility <- c(KNN_sensibility, KNN_sens,)
+  KNN_sensibility <- data.frame(rbind(KNN_sensibility, KNN_sens))
 }
 ### Todas las matices de confusión de kNN
 KNN
@@ -498,17 +506,9 @@ glm_logit <- glm(model , family=binomial(link="logit") , data=training)
 ## Predicción
 testing$predict_logit <- predict(glm_logit , testing , type="response")
 
-testing <- testing %>%
-  mutate(predict_logit=ifelse(predict_logit>0.5,1,0) %>%
-           factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
-
-## Matriz de confusion de logit normal
-confusionMatrix(data=testing$predict_logit, 
-                reference=testing$Pobre , 
-                mode="sens_spec" , positive="Pobre")
 
 
-## Logit CV 
+## Logit CV--------------------------
 
 predict <- stats::predict
 
@@ -549,9 +549,9 @@ evalResults$Roc_logid_cv <- predict(logit_cv, newdata = evaluation, type = "prob
 
 rfROC <- roc(evalResults$Pobre, evalResults$Roc_logid_cv, levels = rev(levels(evalResults$Pobre)))
 
-rfThresh <- coords(rfROC, x = "best", best.method = "closest.topleft")
+rfTresh_log_cv <- coords(rfROC, x = "best", best.method = "closest.topleft")
 
-rfThresh[1] # 0.2658217
+rfTresh_log_cv[1] # 0.2658217
 
 ## Lasso- Ridge Logit y ElasticNet Cross-Validation---------------------------
 
@@ -671,7 +671,7 @@ rfThresh_fin ## puntos de corte óptimos para modelos del loop
 #saveRDS(forest, "Data/modelo_forest.rds")
 
 
-## uso del modelo Random Forest
+## uso del modelo Random Forest------------------
 
 myforest <- readRDS("Data/modelo_forest.rds") ## se trae el modelo RF para predecir 
 
@@ -681,7 +681,7 @@ sens <- x[x$alpha==myforest[["bestTune"]][["mtry"]],]
 # dataframe con las estadísticas anteriores
 sensibili <- rbind(sensibili, sens)
 
-testing <- testing[,-(ncol(testing)-1:ncol(testing))]
+
 ## Predicciones
 pred <- predict(myforest, testing, type="prob")[1]
 testing <- cbind(testing, pred$Pobre)
@@ -697,7 +697,7 @@ auc_roc_rf <- performance(preds, measure = "auc")
 auc <- rbind(auc, auc_roc_rf@y.values[[1]])
 colnames(auc)<- c("AUC")
 
-## Evaluación del Threshold en evaluation 
+## Evaluación del Threshold en evaluation del random forest
 
 evalResults <- data.frame(Pobre = evaluation$Pobre)
 evalResults$rROC_forest <- predict(myforest, newdata = evaluation, type = "prob")[,1]
@@ -705,7 +705,7 @@ evalResults$rROC_forest <- predict(myforest, newdata = evaluation, type = "prob"
 rfROC <- roc(evalResults$Pobre, evalResults$rROC_forest, levels = rev(levels(evalResults$Pobre)))
 
 rfThresh <- coords(rfROC, x = "best", best.method = "closest.topleft") %>% mutate(modelo = "Random_forest")
-rfThresh
+
 rfThresh_fin <- rbind(rfThresh_fin,rfThresh)
 
 
@@ -726,22 +726,32 @@ colnames(auc) <- c("modelos")
 ## Clasificaciones
 
 # KNN: ya esta en la base de testing
+KNN
+
+#sensibility knn
+KNN_sensibility
+
 
 ## Logit 
 
+#Predicción Logit
 testing <- testing %>% 
   mutate(p_logit_bayes=ifelse(predict_logit>0.5,1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
+## Matriz de confusion de logit normal
 cm_logit <- confusionMatrix(data=testing$p_logit_bayes, 
                                reference=testing$Pobre , 
                                mode="sens_spec" , positive="Pobre")
+
 cm_logit$table
-cm_logit[["byClass"]][["Sensitivity"]]
+s1 <- cm_logit[["byClass"]][["Sensitivity"]] # sebilidad de logit
 
 
 ## Logit CV
 
+
+## Matriz de confusion de logit CV k-fold
 testing <- testing %>% 
   mutate(p_logit_cv_bayes=ifelse(p_logit_cv>0.5,1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
@@ -750,118 +760,177 @@ cm_logit_cv <- confusionMatrix(data=testing$p_logit_cv_bayes,
                             reference=testing$Pobre , 
                             mode="sens_spec" , positive="Pobre")
 cm_logit_cv$table
-cm_logit_cv[["byClass"]][["Sensitivity"]]
+s2 <- cm_logit_cv[["byClass"]][["Sensitivity"]] #sensibilidad logid CV k-Fold
 
 
+## logit CV k-fold con Thresh
 testing <- testing %>% 
-  mutate(p_logit_cv_th=ifelse(p_logit_cv>rfTresh_log_cv,1,0) %>% 
+  mutate(p_logit_cv_th=ifelse(p_logit_cv>rfTresh_log_cv[1,1],1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
+## Matriz de confusión de logit CV k-fold con Thresh
 cm_logit_cv_th <- confusionMatrix(data=testing$p_logit_cv_th, 
                                reference=testing$Pobre , 
                                mode="sens_spec" , positive="Pobre")
 cm_logit_cv_th$table
-cm_logit_cv_th[["byClass"]][["Sensitivity"]]
+s3 <- cm_logit_cv_th[["byClass"]][["Sensitivity"]] ## sensibilidad con logit CV k-fold con Thresh
 
 
 # lasso-logit
-
 testing <- testing %>% 
   mutate(p_Lasso_logit_bayes=ifelse(p_Lasso_logit>0.5,1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
+## Matriz de confusion de lasso CV k-fold
 cm_lasso <- confusionMatrix(data=testing$p_Lasso_logit_bayes, 
                             reference=testing$Pobre , 
                             mode="sens_spec" , positive="Pobre")
 cm_lasso$table
-cm_lasso[["byClass"]][["Sensitivity"]]
+s4 <- cm_lasso[["byClass"]][["Sensitivity"]] # sensibilidad con lasso CV k-fold
 
+
+## Lasso logit CV k-fold con Thresh
 testing <- testing %>% 
   mutate(p_Lasso_logit_th=ifelse(p_Lasso_logit>rfThresh_fin[2,1],1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
+## Matriz de confusion de Lasso logit CV k-fold con Thresh
 cm_lasso_th <- confusionMatrix(data=testing$p_Lasso_logit_th, 
                             reference=testing$Pobre , 
                             mode="sens_spec" , positive="Pobre")
 cm_lasso_th$table
-cm_lasso_th[["byClass"]][["Sensitivity"]]
+s5 <- cm_lasso_th[["byClass"]][["Sensitivity"]] ## Sensibilidad con Lasso logit CV k-fold con Thresh
 
-# Ridge-logit
 
+## Ridge-logit
 testing <- testing %>% 
   mutate(p_Ridge_logit_bayes=ifelse(p_Ridge_logit>0.5,1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
+## Matriz de confusion de Ridge logit CV k-fold 
 cm_ridge <- confusionMatrix(data=testing$p_Ridge_logit_bayes, 
                          reference=testing$Pobre , 
                          mode="sens_spec" , positive="Pobre")
 cm_ridge$table
-cm_ridge[["byClass"]][["Sensitivity"]]
+s6 <- cm_ridge[["byClass"]][["Sensitivity"]] # sensibilidad con Ridge logit CV k-fold
 
+
+## Ridge-logit CV k-fold con Thresh 
 testing <- testing %>% 
   mutate(p_Ridge_logit_th=ifelse(p_Ridge_logit>rfThresh_fin[3,1],1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
+## Matriz de confusion de Ridge logit CV k-fold con Thresh
 cm_ridge_th <- confusionMatrix(data=testing$p_Ridge_logit_th, 
                             reference=testing$Pobre , 
                             mode="sens_spec" , positive="Pobre")
 cm_ridge_th$table
-cm_ridge_th[["byClass"]][["Sensitivity"]]
+s7 <- cm_ridge_th[["byClass"]][["Sensitivity"]] # Sensibilidad con Ridge logit CV k-fold con Thresh
+
 
 # Elastic Net
-
 testing <- testing %>% 
   mutate(p_Elasticnet_bayes=ifelse(p_Elasticnet>0.5,1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
+## Matriz de confusion de Elastic Net
 cm_EN <- confusionMatrix(data=testing$p_Elasticnet_bayes, 
                          reference=testing$Pobre , 
                          mode="sens_spec" , positive="Pobre")
 cm_EN$table
-cm_EN[["byClass"]][["Sensitivity"]]
+s8 <- cm_EN[["byClass"]][["Sensitivity"]] # Sensibilidad con Elastic Net
 
+
+# Elastic Net con thresh
 testing <- testing %>% 
   mutate(p_Elasticnet_th=ifelse(p_Elasticnet>rfThresh_fin[1,1],1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
+## Matriz de confusion de Elastic Net con Thresh
 cm_EN_th <- confusionMatrix(data=testing$p_Elasticnet_th, 
                          reference=testing$Pobre , 
                          mode="sens_spec" , positive="Pobre")
 cm_EN_th$table
-cm_EN_th[["byClass"]][["Sensitivity"]]
+s9 <- cm_EN_th[["byClass"]][["Sensitivity"]] # sensibilidad con Elastic Net con thresh
 
 
 # Random Forest
-
 testing <- testing %>% 
   mutate(pr_forest_bayes=ifelse(pr_forest>0.5,1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
+## Matriz de confusion de Random Forest
 cm_rf <- confusionMatrix(data=testing$pr_forest_bayes, 
                 reference=testing$Pobre , 
                 mode="sens_spec" , positive="Pobre")
 cm_rf$table
-cm_rf[["byClass"]][["Sensitivity"]]
+s10 <- cm_rf[["byClass"]][["Sensitivity"]] # sensibilidad con Random Forest
 
+
+# Random Forest con Thresh
 testing <- testing %>% 
   mutate(pr_forest_th=ifelse(pr_forest>rfThresh_fin[4,1],1,0) %>% 
            factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
 
+## Matriz de confusion de Random Forest con Thresh
 cm_rf_th <- confusionMatrix(data=testing$pr_forest_th, 
                 reference=testing$Pobre , 
-                mode="sens_spec" , positive="Pobre")$table
+                mode="sens_spec" , positive="Pobre")
 
 cm_rf_th$table
-cm_rf_th[["byClass"]][["Sensitivity"]]
+s11 <-  cm_rf_th[["byClass"]][["Sensitivity"]] # sensibilidad con Random Forest con Thresh
+s11
 
-## Modelo predicción de ingresos 
+##Matriz de confusión Random Forest
+cm_rf_th$table
+
+#tabla de sensibilidades y AUC
+vector_mod <- c("Logit","Logit-cv","Lasso_logit","Lasso_logit_Thres","Ridge_logit","Ridge_logit_Thres","Elastic_Net","Elastic_Net_thresh","Random_Forest","Random_Forest_Thresh")
+tabla_sens <- data.frame(Modelo = vector_mod, Sensibility = rbind(s2,s3,s4,s5,s6,s7,s8,s9,s10,s11))
+tabla_sens <- rbind(tabla_sens, KNN_sensibility) %>% cbind(c("AUC"))
+tabla_sens[2,3]<-auc_roc@y.values[[1]] 
+tabla_sens[3,3]<-auc[1,1]
+tabla_sens[5,3]<-auc[2,1]
+tabla_sens[7,3]<-auc[3,1]
+tabla_sens[9,3]<-auc[4,1]
+tabla_sens
+
+
+
+
+##  Entrenamiento del mejor modelo de clasificación-------------------------------------------
+
+
+best_model_clasi <- as.formula("Pobre~factor(actividad_jef)+factor(niv_educ_jef)+personas_x_Ug+factor(Ocupacion_vivienda)+num_cuartos_exclus_hog+ContEspec+
+      Subsidiado+prop_si_cotiza+prop_no_cotiza+Pensionado+factor(Depto)+edad_media+prop_hombre+prop_mujer")
+
+#mejor modelo: random forest
+myforest <- readRDS("Data/modelo_forest.rds") ## se trae el modelo RF para predecir
+
+colnames(df_test_hog)
+## Predicción modelo Randon forest
+
+df_test_hog_final <- df_test_hog_final[(df_test_hog_final$id!="7f3338d5ae1e7b783617ff44"),] %>% mutate(Pobre=1)
+nrow(df_test_hog_final)
+ncol(df_test_hog_final)
+
+df_test_hog_final$pred_rf_best <- predict(myforest, df_test_hog_final, type="prob")[1]
+
+
+BASE_PREDICT <- df_test_hog_final[,c("id","pred_rf_best")] %>% mutate(Pobre_classification=ifelse(pred_rf_best>rfThresh_fin[4,1],1,0) %>% 
+                                                             factor(.,levels=c(1,0),labels=c("Pobre","No_Pobre")))
+
+
+### CLASIFICACIÓN DE POBRES predicha
+prop.table(table(BASE_PREDICT$Pobre_classification))
+
+
+
+## MODELO DE PREDICCIÓN DE INGRESOS---------------------------------------------------------------------------------
 ## Estrutura del modelo de ingreso 
 var_mod_ingre <- c("id","Ingtot_log","edad","edad_sqr","sexo","niv_educativo","actividad","tiempo_empresa", "tiempo_empresa_sqr","ocupacion_empleo", "ReciAyudaInst", "Ocupacion_vivienda", "cotiza_pension", "HorasTrabSemana","mujer")
 
-## definición de semilla 
-set.seed(777)
-
-### Se corren 11 modelos para así encontrar el que mejor se ajuste por MSE meidante CV K-FOLD
+## Se corren 11 modelos para así encontrar el que mejor se ajuste por MSE meidante CV K-FOLD
 
 modelos <- list(Ingtot_log~edad+edad_sqr,
                 Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr,
@@ -872,11 +941,14 @@ modelos <- list(Ingtot_log~edad+edad_sqr,
                 Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo+factor(actividad)+factor(ocupacion_empleo),
                 Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo+factor(actividad)+factor(ocupacion_empleo)+ReciAyudaInst,
                 Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo+factor(actividad)+factor(ocupacion_empleo)+ReciAyudaInst+factor(Ocupacion_vivienda),
-                Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo+factor(actividad)+factor(ocupacion_empleo)+ReciAyudaInst+factor(Ocupacion_vivienda)+factor(cotiza_pension),
-                Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo+factor(actividad)+factor(ocupacion_empleo)+ReciAyudaInst+factor(Ocupacion_vivienda)+factor(cotiza_pension)+HorasTrabSemana)
+                Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo+factor(actividad)+factor(ocupacion_empleo)+ReciAyudaInst+factor(Ocupacion_vivienda)+factor(cotiza_pension))
 
 ## Cálculo de MSE por CV
 
+## definición de semilla 
+set.seed(777)
+
+## Loop para entrenamiento de modelos de ingreso
 MSE_CV <- c()
 for (i in modelos){
   model<-train(i,
@@ -890,45 +962,63 @@ for (i in modelos){
 
 MSE_CV
 
-ScaleXmod<-c('m1', 'm2', 'm3' ,'m4', 'm5','m6','m7','m8','m9','m10','m11')
-grafica_mse <- data.frame(modelos=c(1,2,3,4,5,6,7,8,9,10,11),
-                          MSE=MSE_CV)
-rownames(grafica_mse)<-c(1,2,3,4,5,6,7,8,9,10,11)
+ScaleXmod<-c('m1', 'm2', 'm3' ,'m4', 'm5','m6','m7','m8','m9','m10')
+grafica_mse <- data.frame(modelos=c(1,2,3,4,5,6,7,8,9,10),
+                          MSE=MSE_CV[1:10])
+rownames(grafica_mse)<-c(1,2,3,4,5,6,7,8,9,10)
 
 ## gráfica de los MSE de los modelos entrenados
 ggplot(grafica_mse, aes(x=modelos,y=MSE, group = 1)) + 
   geom_line() +
   theme_classic() + 
-  scale_x_continuous(breaks = c(1:11),
+  scale_x_continuous(breaks = c(1:10),
                      labels= ScaleXmod)
 
-##  Entrenamiento del mejor modelo
 
-best_model <- as.formula("Ingtot_fin~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo+factor(actividad)+factor(ocupacion_empleo)")
 
-model_m7<-train(best_model,
+##  Entrenamiento del mejor modelo de ingreso------------------------------------
+
+best_model <- as.formula("Ingtot_log~edad+edad_sqr+tiempo_empresa+tiempo_empresa_sqr+mujer+niv_educativo+mujer:niv_educativo+factor(actividad)+factor(ocupacion_empleo)+ReciAyudaInst+factor(Ocupacion_vivienda)")
+
+set.seed(777)
+
+model_m9<-train(best_model,
                 data = df_pers_ing_1[,var_mod_ingre],
                 trControl = trainControl(method = "cv", number = 5),
                 method = "null") # specifying regression model
 
 
-## Predicción modelo m7
+## Predicción final modelo m11 
 
-df_test_per$pred_ing <- exp(predict(model_m7, df_pers_ing_test))
+predict <- stats::predict
 
-## Predicción final modelo m7 
+#Ejecutar modelo
+model_m9 <- lm(best_model, df_pers_ing_1[,var_mod_ingre])
+
+##Guardar predichos
+df_test_per$pred_ing <- exp(predict(model_m9, df_pers_ing_test))
 
 df_test_hog_fin <- df_test_per[,c("id","pred_ing")] %>%  group_by(id) %>%
-  summarise(pred_ingreso = sum(pred_ing)) 
+  summarise(pred_ingreso_fin = sum(pred_ing)) 
 
 df_test_hog <- df_test_hog %>% inner_join(df_test_hog_fin, by="id") %>%
-  mutate(Pobre=ifelse(pred_ingreso<Lp*personas_x_Ug,
+  mutate(Pobre_income=ifelse(pred_ingreso_fin<Lp*personas_x_Ug,
                       1,
                       0)) %>%
-  mutate(Pobre=factor(Pobre, level=c(1,0), labels=c("Pobre", "No_Pobre")))
+  mutate(Pobre_income=factor(Pobre_income, level=c(1,0), labels=c("Pobre", "No_Pobre")))
+
+df_test_hog_final_ing <- df_test_hog[,c("id","Pobre_income")]
+
+#colnames(df_test_hog_final_ing) <- c("id","Pobre_income")
+
+### cLASIFICACIÓN DE POBRES predicha por ingresos
+prop.table(table(df_test_hog_final_ing$Pobre_income))
 
 
+## base final de predicciones
+BASE_PREDICT_FIN <- BASE_PREDICT[,c("id","Pobre_classification")] %>% inner_join(df_test_hog_final_ing, by="id") 
+prop.table(table(BASE_PREDICT_FIN$Pobre_classification))
+prop.table(table(BASE_PREDICT_FIN$Pobre_income))
 
-
-
-
+saveRDS(BASE_PREDICT_FIN,"Data/Base_predicciones.rds")
+export(BASE_PREDICT_FIN,"Data/Base_predicciones.csv")
